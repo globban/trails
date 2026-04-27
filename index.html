@@ -242,21 +242,27 @@
         }
 
         function updateBearing(e) {
-            const heading = e.alpha; 
-            if (heading === null) return;
+    // alpha is the compass heading (0 = North)
+    let heading = e.alpha; 
+    if (heading === null) return;
 
-            // Smooth the jittery sensor
-            smoothedHeading = (alpha * heading) + (1 - alpha) * smoothedHeading;
+    // 1. Smooth the jitter
+    smoothedHeading = (alpha * heading) + (1 - alpha) * smoothedHeading;
 
-            const tLat = document.getElementById('tLat').value;
-            const tLon = document.getElementById('tLon').value;
-            
-            if (lastPos && tLat != 0) {
-                const bearing = getBearing(lastPos.lat, lastPos.lon, tLat, tLon);
-                const arrowRotation = bearing - smoothedHeading;
-                document.getElementById('arrow').style.transform = `rotate(${arrowRotation}deg)`;
-            }
-        }
+    const tLat = document.getElementById('tLat').value;
+    const tLon = document.getElementById('tLon').value;
+    
+    if (lastPos && tLat != 0) {
+        // 2. Calculate the fixed angle from you to the goal (World Frame)
+        const targetBearing = getBearing(lastPos.lat, lastPos.lon, tLat, tLon);
+        
+        // 3. Subtract the phone's direction from the target direction
+        // This "counter-rotation" is what makes it work
+        const arrowRotation = targetBearing - smoothedHeading;
+        
+        document.getElementById('arrow').style.transform = `rotate(${arrowRotation}deg)`;
+    }
+}
 
         function getBearing(lat1, lon1, lat2, lon2) {
             const dLon = (lon2 - lon1) * Math.PI / 180;
