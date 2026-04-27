@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Landscape Cycling Cockpit</title>
+    <style>
+        :root {
+            --brand-color: #39FF14;
+            --bg-dark: #0a0a0a;
+            --surface: #1a1a1a;
+            --text: #ffffff;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Portrait Warning */
+        @media (orientation: portrait) {
+            #portrait-overlay { display: flex; }
+        }
+
+        #portrait-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--bg-dark);
+            z-index: 999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Landscape Grid Layout */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 60% 40%;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Left Section: Compass */
+        .visual-area {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-right: 2px solid var(--surface);
+            position: relative;
+        }
+
+        #arrow {
+            font-size: 25vh;
+            color: var(--brand-color);
+            transition: transform 0.1s linear;
+            filter: drop-shadow(0 0 10px var(--brand-color));
+        }
+
+        .dest-label {
+            margin-top: 20px;
+            font-size: 1.2rem;
+            opacity: 0.7;
+        }
+
+        /* Right Section: Data Tiles */
+        .data-sidebar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(4, 1fr);
+            background: var(--surface);
+        }
+
+        .tile {
+            border: 1px solid rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 15px;
+        }
+
+        .full-width { grid-column: span 2; }
+
+        .label { font-size: 0.7rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+        .value { font-size: 1.8rem; font-weight: 800; color: var(--brand-color); }
+        .unit { font-size: 0.9rem; color: #555; }
+
+        /* Controls */
+        #start-screen {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        button {
+            background: var(--brand-color);
+            color: black;
+            border: none;
+            padding: 20px 40px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+        }
+
+        .settings-pane {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            z-index: 50;
+        }
+
+        input { background: #333; border: 1px solid #555; color: white; padding: 5px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <div id="portrait-overlay">
+        <h1>PLEASE ROTATE DEVICE</h1>
+        <p>Landscape mode is required for the cockpit view.</p>
+    </div>
+
+    <div id="start-screen">
+        <button onclick="initApp()">START TRACKING</button>
+    </div>
+
+    <div class="dashboard">
+        <div class="visual-area">
+            <div id="arrow">▲</div>
+            <div class="dest-label">DIST TO GO: <span id="dist-to-go">0.0</span> km</div>
+        </div>
+
+        <div class="data-sidebar">
+            <div class="tile">
+                <span class="label">Speed</span>
+                <div><span class="value" id="speed">0.0</span> <span class="unit">km/h</span></div>
+            </div>
+            <div class="tile">
+                <span class="label">Top</span>
+                <div><span class="value" id="top-speed">0.0</span> <span class="unit">km/h</span></div>
+            </div>
+            <div class="tile full-width">
+                <span class="label">Avg Speed</span>
+                <div><span class="value" id="avg-speed">0.0</span> <span class="unit">km/h</span></div>
+            </div>
+            <div class="tile">
+                <span class="label">Distance</span>
+                <div><span class="value" id="distance">0.0</span> <span class="unit">km</span></div>
+            </div>
+            <div class="tile">
+                <span class="label">Time</span>
+                <div><span class="value" id="timer">00:00:00</span></div>
+            </div>
+            <div class="tile full-width">
+                <span class="label">Elevation</span>
+                <div><span class="value" id="elevation">---</span> <span class="unit">m</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="settings-pane">
+        Theme: <input type="color" id="colorPicker" value="#39FF14" onchange="updateTheme(this.value)"> <br>
+        Target Lat: <input type="number" id="tLat" value="0.0" step="0.0001"> <br>
+        Target Lon: <input type="number" id="tLon" value="0.0" step="0.0001">
+    </div>
+
+    <script>
+        let startTime, timerInterval;
+        let totalDist = 0, topSpeed = 0, lastPos = null;
+        let smoothedHeading = 0;
+        const alpha = 0.15; // Compass smoothing
+
+        function initApp() {
+            document.getElementById('start-screen').style.display = 'none';
+            startTime = Date.now();
+            
+            // 1. Request GPS
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(updatePosition, null, {
+                    enableHighAccuracy: true
+                });
+            }
+
+            // 2. Request Compass (iOS Special Handling)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(response => {
+                    if (response == 'granted') window.addEventListener('deviceorientationabsolute', updateBearing);
+                });
+            } else {
+                window.addEventListener('deviceorientationabsolute', updateBearing);
+            }
+
+            // 3. Start Timer
+            timerInterval = setInterval(updateTimer, 1000);
+
+            // 4. Wake Lock (Keep screen on)
+            if ('wakeLock' in navigator) navigator.wakeLock.request('screen');
+        }
+
+        function updatePosition(pos) {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const speedKmH = (pos.coords.speed || 0) * 3.6;
+
+            // Speed logic
+            if (speedKmH > topSpeed) topSpeed = speedKmH;
+            document.getElementById('speed').innerText = speedKmH.toFixed(1);
+            document.getElementById('top-speed').innerText = topSpeed.toFixed(1);
+            document.getElementById('elevation').innerText = pos.coords.altitude ? pos.coords.altitude.toFixed(0) : "---";
+
+            // Distance Logic
+            if (lastPos) {
+                const d = haversine(lastPos.lat, lastPos.lon, lat, lon);
+                totalDist += d;
+                document.getElementById('distance').innerText = totalDist.toFixed(2);
+            }
+            lastPos = {lat, lon};
+
+            // Distance to Target
+            const tLat = document.getElementById('tLat').value;
+            const tLon = document.getElementById('tLon').value;
+            const distToGoal = haversine(lat, lon, tLat, tLon);
+            document.getElementById('dist-to-go').innerText = distToGoal.toFixed(2);
+        }
+
+        function updateBearing(e) {
+            const heading = e.alpha; 
+            if (heading === null) return;
+
+            // Smooth the jittery sensor
+            smoothedHeading = (alpha * heading) + (1 - alpha) * smoothedHeading;
+
+            const tLat = document.getElementById('tLat').value;
+            const tLon = document.getElementById('tLon').value;
+            
+            if (lastPos && tLat != 0) {
+                const bearing = getBearing(lastPos.lat, lastPos.lon, tLat, tLon);
+                const arrowRotation = bearing - smoothedHeading;
+                document.getElementById('arrow').style.transform = `rotate(${arrowRotation}deg)`;
+            }
+        }
+
+        function getBearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
+            const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
+                      Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371; // km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function updateTimer() {
+            const sec = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('timer').innerText = new Date(sec * 1000).toISOString().substr(11, 8);
+            
+            if (totalDist > 0) {
+                const hours = sec / 3600;
+                document.getElementById('avg-speed').innerText = (totalDist / hours).toFixed(1);
+            }
+        }
+
+        function updateTheme(color) {
+            document.documentElement.style.setProperty('--brand-color', color);
+        }
+    </script>
+</body>
+</html>
