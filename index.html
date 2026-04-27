@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Landscape Cycling Cockpit</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root {
             --brand-color: #39FF14;
@@ -60,6 +62,24 @@
             align-items: center;
             border-right: 2px solid var(--surface);
             position: relative;
+        }
+
+        #settingsBtn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: var(--brand-color);
+            color: black;
+            border: none;
+            padding: 10px;
+            border-radius: 50%;
+            font-size: 1.2rem;
+            cursor: pointer;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         #arrow {
@@ -128,9 +148,44 @@
             border-radius: 8px;
             font-size: 0.8rem;
             z-index: 50;
+            max-height: 80vh;
+            overflow-y: auto;
         }
 
         input { background: #333; border: 1px solid #555; color: white; padding: 5px; margin: 5px 0; }
+
+        /* iOS Style Switches */
+        input[type="checkbox"] {
+            appearance: none;
+            width: 50px;
+            height: 26px;
+            background: #ccc;
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-right: 10px;
+        }
+
+        input[type="checkbox"]:checked {
+            background: var(--brand-color);
+        }
+
+        input[type="checkbox"]:before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s;
+        }
+
+        input[type="checkbox"]:checked:before {
+            transform: translateX(24px);
+        }
     </style>
 </head>
 <body>
@@ -148,49 +203,155 @@
         <div class="visual-area">
             <div id="arrow">▲</div>
             <div class="dest-label">DIST TO GO: <span id="dist-to-go">0.0</span> km</div>
+            <button id="settingsBtn" onclick="toggleSettings()">⚙</button>
         </div>
 
         <div class="data-sidebar">
-            <div class="tile">
+            <div class="tile" id="speedTile">
                 <span class="label">Speed</span>
                 <div><span class="value" id="speed">0.0</span> <span class="unit">km/h</span></div>
             </div>
-            <div class="tile">
+            <div class="tile" id="topSpeedTile">
                 <span class="label">Top</span>
                 <div><span class="value" id="top-speed">0.0</span> <span class="unit">km/h</span></div>
             </div>
-            <div class="tile full-width">
+            <div class="tile full-width" id="avgSpeedTile">
                 <span class="label">Avg Speed</span>
                 <div><span class="value" id="avg-speed">0.0</span> <span class="unit">km/h</span></div>
             </div>
-            <div class="tile">
+            <div class="tile" id="distanceTile">
                 <span class="label">Distance</span>
                 <div><span class="value" id="distance">0.0</span> <span class="unit">km</span></div>
             </div>
-            <div class="tile">
+            <div class="tile" id="timerTile">
                 <span class="label">Time</span>
                 <div><span class="value" id="timer">00:00:00</span></div>
             </div>
-            <div class="tile full-width">
+            <div class="tile full-width" id="elevationTile">
                 <span class="label">Elevation</span>
                 <div><span class="value" id="elevation">---</span> <span class="unit">m</span></div>
             </div>
         </div>
     </div>
 
-    <div class="settings-pane">
+    <div id="map-modal" style="display:none; position:fixed; inset:0; background:white; z-index:1000;">
+        <div id="map" style="height:100%;"></div>
+        <button onclick="closeMap()" style="position:absolute; top:10px; right:10px; background:black; color:white; border:none; padding:10px; border-radius:5px;">Close</button>
+    </div>
+
+    <div class="settings-pane" id="settingsPane" style="display:none;">
+        <div><strong>Settings</strong></div>
         Theme: <input type="color" id="colorPicker" value="#39FF14" onchange="updateTheme(this.value)"> <br>
-        Target Lat: <input type="number" id="tLat" value="0.0" step="0.0001"> <br>
-        Target Lon: <input type="number" id="tLon" value="0.0" step="0.0001">
+        <button onclick="openMap()">Set Destination on Map</button> <br><br>
+        <div><strong>Show Stats:</strong></div>
+        <label><input type="checkbox" id="showSpeed" onchange="toggleStat('speed')"> Speed</label><br>
+        <label><input type="checkbox" id="showTopSpeed" onchange="toggleStat('topSpeed')"> Top Speed</label><br>
+        <label><input type="checkbox" id="showAvgSpeed" onchange="toggleStat('avgSpeed')"> Avg Speed</label><br>
+        <label><input type="checkbox" id="showDistance" onchange="toggleStat('distance')"> Distance</label><br>
+        <label><input type="checkbox" id="showTimer" onchange="toggleStat('timer')"> Time</label><br>
+        <label><input type="checkbox" id="showElevation" onchange="toggleStat('elevation')"> Elevation</label>
     </div>
 
     <script>
+        let settings = {
+            color: '#39FF14',
+            tLat: 0.0,
+            tLon: 0.0,
+            visibleStats: {
+                speed: true,
+                topSpeed: true,
+                avgSpeed: true,
+                distance: true,
+                timer: true,
+                elevation: true
+            }
+        };
+
         let startTime, timerInterval;
         let totalDist = 0, topSpeed = 0, lastPos = null;
         let smoothedHeading = 0;
         const alpha = 0.15; // Compass smoothing
+        let map, currentMarker, destMarker;
+
+        function loadSettings() {
+            const saved = localStorage.getItem('cockpitSettings');
+            if (saved) {
+                settings = JSON.parse(saved);
+                updateTheme(settings.color);
+                document.getElementById('colorPicker').value = settings.color;
+                applyStatVisibility();
+            }
+        }
+
+        function saveSettings() {
+            localStorage.setItem('cockpitSettings', JSON.stringify(settings));
+        }
+
+        function updateTheme(color) {
+            settings.color = color;
+            document.documentElement.style.setProperty('--brand-color', color);
+            saveSettings();
+        }
+
+        function toggleStat(stat) {
+            settings.visibleStats[stat] = !settings.visibleStats[stat];
+            applyStatVisibility();
+            saveSettings();
+        }
+
+        function applyStatVisibility() {
+            document.getElementById('speedTile').style.display = settings.visibleStats.speed ? 'flex' : 'none';
+            document.getElementById('topSpeedTile').style.display = settings.visibleStats.topSpeed ? 'flex' : 'none';
+            document.getElementById('avgSpeedTile').style.display = settings.visibleStats.avgSpeed ? 'flex' : 'none';
+            document.getElementById('distanceTile').style.display = settings.visibleStats.distance ? 'flex' : 'none';
+            document.getElementById('timerTile').style.display = settings.visibleStats.timer ? 'flex' : 'none';
+            document.getElementById('elevationTile').style.display = settings.visibleStats.elevation ? 'flex' : 'none';
+        }
+
+        function toggleSettings() {
+            const pane = document.getElementById('settingsPane');
+            pane.style.display = pane.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function openMap() {
+            if (!lastPos) return;
+            document.getElementById('map-modal').style.display = 'block';
+            if (!map) {
+                map = L.map('map').setView([lastPos.lat, lastPos.lon], 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                currentMarker = L.marker([lastPos.lat, lastPos.lon]).addTo(map).bindPopup('You are here');
+                const tLat = settings.tLat;
+                const tLon = settings.tLon;
+                if (tLat != 0 || tLon != 0) {
+                    destMarker = L.marker([tLat, tLon]).addTo(map).bindPopup('Destination');
+                }
+                map.on('click', function(e) {
+                    if (destMarker) map.removeLayer(destMarker);
+                    destMarker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map).bindPopup('Destination');
+                    settings.tLat = parseFloat(e.latlng.lat.toFixed(4));
+                    settings.tLon = parseFloat(e.latlng.lng.toFixed(4));
+                    saveSettings();
+                });
+            } else {
+                map.setView([lastPos.lat, lastPos.lon], 13);
+                currentMarker.setLatLng([lastPos.lat, lastPos.lon]);
+            }
+        }
+
+        function closeMap() {
+            document.getElementById('map-modal').style.display = 'none';
+        }
 
         function initApp() {
+            loadSettings();
+            document.getElementById('showSpeed').checked = settings.visibleStats.speed;
+            document.getElementById('showTopSpeed').checked = settings.visibleStats.topSpeed;
+            document.getElementById('showAvgSpeed').checked = settings.visibleStats.avgSpeed;
+            document.getElementById('showDistance').checked = settings.visibleStats.distance;
+            document.getElementById('showTimer').checked = settings.visibleStats.timer;
+            document.getElementById('showElevation').checked = settings.visibleStats.elevation;
             document.getElementById('start-screen').style.display = 'none';
             startTime = Date.now();
             
@@ -236,10 +397,11 @@ if ('ondeviceorientationabsolute' in window) {
             lastPos = {lat, lon};
 
             // Distance to Target
-            const tLat = document.getElementById('tLat').value;
-            const tLon = document.getElementById('tLon').value;
-            const distToGoal = haversine(lat, lon, tLat, tLon);
+            const distToGoal = haversine(lat, lon, settings.tLat, settings.tLon);
             document.getElementById('dist-to-go').innerText = distToGoal.toFixed(2);
+
+            // Update map marker if map is open
+            if (currentMarker) currentMarker.setLatLng([lat, lon]);
         }
 
     function updateBearing(e) {
@@ -256,8 +418,8 @@ if ('ondeviceorientationabsolute' in window) {
     // Low-pass filter (Smoothing)
     smoothedHeading = (alpha * heading) + (1 - alpha) * smoothedHeading;
 
-    const tLat = document.getElementById('tLat').value;
-    const tLon = document.getElementById('tLon').value;
+    const tLat = settings.tLat;
+    const tLon = settings.tLon;
 
     if (lastPos && tLat != 0) {
         const targetBearing = getBearing(lastPos.lat, lastPos.lon, tLat, tLon);
