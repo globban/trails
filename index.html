@@ -202,7 +202,8 @@
             }
 
             // 2. Request Compass (iOS Special Handling)
-            if (window.DeviceOrientationAbsoluteEvent) {
+        // Force absolute orientation for Android
+if ('ondeviceorientationabsolute' in window) {
     window.addEventListener('deviceorientationabsolute', updateBearing);
 } else {
     window.addEventListener('deviceorientation', updateBearing);
@@ -241,25 +242,33 @@
             document.getElementById('dist-to-go').innerText = distToGoal.toFixed(2);
         }
 
-        function updateBearing(e) {
-    // alpha is the compass heading (0 = North)
-    let heading = e.alpha; 
-    if (heading === null) return;
+    function updateBearing(e) {
+    // Use webkitCompassHeading for iOS, alpha for Android
+    let heading = e.webkitCompassHeading || e.alpha;
+    if (heading === undefined || heading === null) return;
 
-    // 1. Smooth the jitter
+    // IMPORTANT: Android alpha is often counter-clockwise. 
+    // We may need to invert it depending on the browser version.
+    if (!e.webkitCompassHeading) {
+        heading = 360 - heading; 
+    }
+
+    // Low-pass filter (Smoothing)
     smoothedHeading = (alpha * heading) + (1 - alpha) * smoothedHeading;
 
     const tLat = document.getElementById('tLat').value;
     const tLon = document.getElementById('tLon').value;
-    
+
     if (lastPos && tLat != 0) {
-        // 2. Calculate the fixed angle from you to the goal (World Frame)
         const targetBearing = getBearing(lastPos.lat, lastPos.lon, tLat, tLon);
         
-        // 3. Subtract the phone's direction from the target direction
-        // This "counter-rotation" is what makes it work
-        const arrowRotation = targetBearing - smoothedHeading;
-        
+        // This is the magic "locked" math
+        let arrowRotation = targetBearing - smoothedHeading;
+
+        // Force the rotation to take the shortest path (prevents spinning 350 degrees)
+        while (arrowRotation < -180) arrowRotation += 360;
+        while (arrowRotation > 180) arrowRotation -= 360;
+
         document.getElementById('arrow').style.transform = `rotate(${arrowRotation}deg)`;
     }
 }
