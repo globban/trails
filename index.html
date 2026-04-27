@@ -202,13 +202,11 @@
             }
 
             // 2. Request Compass (iOS Special Handling)
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(response => {
-                    if (response == 'granted') window.addEventListener('deviceorientationabsolute', updateBearing);
-                });
-            } else {
-                window.addEventListener('deviceorientationabsolute', updateBearing);
-            }
+            if (window.DeviceOrientationAbsoluteEvent) {
+    window.addEventListener('deviceorientationabsolute', updateBearing);
+} else {
+    window.addEventListener('deviceorientation', updateBearing);
+}
 
             // 3. Start Timer
             timerInterval = setInterval(updateTimer, 1000);
