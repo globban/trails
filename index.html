@@ -8,7 +8,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         :root {
-            --brand-color: #39FF14;
+            --brand-color: #ff8d14;
             --bg-dark: #0a0a0a;
             --surface: #1a1a1a;
             --text: #ffffff;
@@ -141,15 +141,36 @@
 
         .settings-pane {
             position: fixed;
-            bottom: 10px;
-            left: 10px;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1001;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .settings-content {
             background: rgba(0,0,0,0.8);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            z-index: 50;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 400px;
             max-height: 80vh;
             overflow-y: auto;
+            position: relative;
+        }
+
+        .settings-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--brand-color);
+            color: black;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 1rem;
         }
 
         input { background: #333; border: 1px solid #555; color: white; padding: 5px; margin: 5px 0; }
@@ -239,17 +260,20 @@
         <button onclick="closeMap()" style="position:absolute; top:10px; right:10px; background:black; color:white; border:none; padding:10px; border-radius:5px;">Close</button>
     </div>
 
-    <div class="settings-pane" id="settingsPane" style="display:none;">
-        <div><strong>Settings</strong></div>
-        Theme: <input type="color" id="colorPicker" value="#39FF14" onchange="updateTheme(this.value)"> <br>
-        <button onclick="openMap()">Set Destination on Map</button> <br><br>
-        <div><strong>Show Stats:</strong></div>
-        <label><input type="checkbox" id="showSpeed" onchange="toggleStat('speed')"> Speed</label><br>
-        <label><input type="checkbox" id="showTopSpeed" onchange="toggleStat('topSpeed')"> Top Speed</label><br>
-        <label><input type="checkbox" id="showAvgSpeed" onchange="toggleStat('avgSpeed')"> Avg Speed</label><br>
-        <label><input type="checkbox" id="showDistance" onchange="toggleStat('distance')"> Distance</label><br>
-        <label><input type="checkbox" id="showTimer" onchange="toggleStat('timer')"> Time</label><br>
-        <label><input type="checkbox" id="showElevation" onchange="toggleStat('elevation')"> Elevation</label>
+    <div class="settings-pane" id="settingsPane">
+        <div class="settings-content">
+            <button class="settings-close" onclick="toggleSettings()">×</button>
+            <div><strong>Settings</strong></div>
+            Theme: <input type="color" id="colorPicker" value="#39FF14" onchange="updateTheme(this.value)"> <br>
+            <button onclick="openMap()">Set Destination on Map</button> <br><br>
+            <div><strong>Show Stats:</strong></div>
+            <label><input type="checkbox" id="showSpeed" onchange="toggleStat('speed')"> Speed</label><br>
+            <label><input type="checkbox" id="showTopSpeed" onchange="toggleStat('topSpeed')"> Top Speed</label><br>
+            <label><input type="checkbox" id="showAvgSpeed" onchange="toggleStat('avgSpeed')"> Avg Speed</label><br>
+            <label><input type="checkbox" id="showDistance" onchange="toggleStat('distance')"> Distance</label><br>
+            <label><input type="checkbox" id="showTimer" onchange="toggleStat('timer')"> Time</label><br>
+            <label><input type="checkbox" id="showElevation" onchange="toggleStat('elevation')"> Elevation</label>
+        </div>
     </div>
 
     <script>
@@ -310,7 +334,7 @@
 
         function toggleSettings() {
             const pane = document.getElementById('settingsPane');
-            pane.style.display = pane.style.display === 'none' ? 'block' : 'none';
+            pane.style.display = pane.style.display === 'none' ? 'flex' : 'none';
         }
 
         function openMap() {
@@ -353,6 +377,7 @@
             document.getElementById('showTimer').checked = settings.visibleStats.timer;
             document.getElementById('showElevation').checked = settings.visibleStats.elevation;
             document.getElementById('start-screen').style.display = 'none';
+            if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
             startTime = Date.now();
             
             // 1. Request GPS
@@ -463,9 +488,7 @@ if ('ondeviceorientationabsolute' in window) {
             }
         }
 
-        function updateTheme(color) {
-            document.documentElement.style.setProperty('--brand-color', color);
-        }
+        window.addEventListener('load', loadSettings);
     </script>
 </body>
 </html>
